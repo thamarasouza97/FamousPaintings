@@ -1,0 +1,227 @@
+
+
+ 1 Fetch all the paintings which are not displayed on any museums?
+
+SELECT *
+FROM work w
+WHERE w.museum_id IS NULL
+
+
+2 Are the museums without any paintings?
+
+SELECT *
+FROM museum m
+WHERE NOT EXISTS ( SELECT *
+                   FROM work w
+				   WHERE w.museum_id = m.museum_id)
+
+
+3 How many paintings have an sale price higher than the regular price?
+
+SELECT *
+FROM product_size ps
+WHERE ps.sale_price > ps.regular_price
+
+
+4 Identify the paintings whose sale price is less than 50% of its regular price.
+
+SELECT ps.work_id, w.name, ps.sale_price, ps.regular_price
+FROM product_size ps
+LEFT JOIN work w
+ON ps.work_id = w.work_id
+WHERE ps.sale_price < (ps.regular_price*0.5)
+
+
+5 Delete duplicate rows from Work, Subject and Product Size
+
+WORK Duplicate - 13.412 distincts values, no duplicates.
+
+SELECT work_id
+      ,[name]
+      ,[artist_id]
+      ,[style]
+      ,[museum_id]
+	  , COUNT (1) AS Items
+FROM work 
+GROUP BY  work_id
+      ,[name]
+      ,[artist_id]
+      ,[style]
+      ,[museum_id]
+HAVING COUNT(1) > 1
+
+
+SUBJECT Duplicate
+
+-- Checking distincts values 
+SELECT DISTINCT	[work_id]
+      ,[subject]
+FROM subject
+
+-- Indentify duplicates using Group By, 59 values founded.
+SELECT [work_id]
+      ,[subject]
+	  , COUNT (1) AS Items
+FROM subject
+GROUP BY  [work_id]
+      ,[subject]
+HAVING COUNT(1) > 1
+
+-- Show rows greather than 1:
+SELECT *
+FROM (SELECT [work_id]
+      ,[subject]
+	  , ROW_NUMBER ()
+	  OVER (PARTITION BY  [work_id]
+      ,[subject] ORDER BY  [work_id]) AS NUM
+FROM subject ) Rows_del
+WHERE NUM > 1
+
+-- CTE
+WITH duplicate AS(
+SELECT *
+FROM (SELECT [work_id]
+      ,[subject]
+	  , ROW_NUMBER ()
+	  OVER (PARTITION BY  [work_id]
+      ,[subject] ORDER BY  [work_id]) AS NUM
+FROM subject ) AS Rows_del
+WHERE NUM > 1)
+
+DELETE FROM duplicate
+
+PRODUCT SIZE Duplicate.
+-- Checking distincts values 
+SELECT DISTINCT	[work_id]
+      ,[size_id]
+      ,[sale_price]
+      ,[regular_price]
+FROM product_size
+
+-- Indentify duplicates using Group By, 687 values founded.
+SELECT [work_id]
+      ,[size_id]
+      ,[sale_price]
+      ,[regular_price]
+	  , COUNT (1) AS Items
+FROM product_size
+GROUP BY  [work_id]
+      ,[size_id]
+      ,[sale_price]
+      ,[regular_price]
+HAVING COUNT(1) > 1
+
+-- Show rows greather than 1:
+SELECT *
+FROM (SELECT [work_id]
+      ,[size_id]
+      ,[sale_price]
+      ,[regular_price]
+	  ,ROW_NUMBER()
+	   OVER (PARTITION BY  [work_id]
+      ,[size_id]
+      ,[sale_price]
+      ,[regular_price] ORDER BY  [work_id]) AS NUM
+	  FROM product_size) AS Rows_delete
+WHERE NUM > 1
+
+-- CTE
+WITH duplicate_prod AS(
+SELECT *
+FROM (SELECT [work_id]
+      ,[size_id]
+      ,[sale_price]
+      ,[regular_price]
+	  ,ROW_NUMBER()
+	   OVER (PARTITION BY  [work_id]
+      ,[size_id]
+      ,[sale_price]
+      ,[regular_price] ORDER BY  [work_id]) AS NUM
+	  FROM product_size) AS Rows_delete
+WHERE NUM > 1)
+DELETE FROM duplicate_prod
+
+
+6 Identify the museums with invalid city information in the given dataset.
+
+SELECT *
+FROM museum m
+WHERE m.city LIKE '%[0-9]%'
+
+
+7 Fetch the top most famous painting subject.
+
+SELECT *
+FROM (SELECT s.subject, COUNT(1) as n_of_paintings,
+      RANK () OVER (ORDER BY COUNT(1) DESC) AS ranking
+	  FROM work w
+	  JOIN subject s on s.work_id = w.work_id
+	  GROUP BY s.subject ) x
+WHERE ranking <= 10 
+
+
+8 Identify museums wich are open on both Sunday and Monday. Display Name and City.
+
+SELECT m.name, m.city, m.state, m.country
+FROM museum m
+JOIN museum_hours mh
+ON m.museum_id = mh.museum_id
+WHERE mh.day = 'Sunday'
+AND EXISTS (SELECT 1
+            FROM museum_hours mh1
+			WHERE mh.museum_id = mh1.museum_id
+			AND mh1.day = 'Monday')
+
+
+9 How many museums are open every single day?
+
+SELECT mh.museum_id, COUNT(1) as x_week
+      FROM museum_hours mh
+	  GROUP BY mh.museum_id
+	  HAVING COUNT(1) = 7
+
+
+10 Wich are the top 5 most popular museum? (Popularity is defined base on most nº of paintings in a museum).
+SELECT m.name as Museum, m.city, m.country, x.n_of_painting
+FROM (SELECT m.museum_id, COUNT(1) AS n_of_painting,
+     RANK() OVER(ORDER BY COUNT(1) DESC) AS rnk
+     FROM work w
+     JOIN museum m
+	 ON m.museum_id = w.museum_id
+	 GROUP BY m.museum_id) as X
+	 JOIN museum m
+	 ON m.museum_id = x.museum_id
+WHERE x.rnk <= 5
+
+
+11 Who are the top 5 most popular artist? (Popularity is defined base on most nº of paintings done by an artists).
+
+SELECT a.full_name as Artist, a.nationality, a.style, x.n_of_painting
+FROM (SELECT a.artist_id, COUNT(1) AS n_of_painting,
+     RANK() OVER(ORDER BY COUNT(1) DESC) AS rnk
+     FROM work w
+     JOIN artist a
+	 ON w.artist_id = a.artist_id
+	 GROUP BY a.artist_id) as X
+	 JOIN artist a
+	 ON a.artist_id = x.artist_id
+WHERE x.rnk <= 5
+
+
+12 Which are the most popular and 3 least popular painting styles?
+
+WITH cte AS(
+
+SELECT w.style, COUNT(1) as cnt,
+RANK () OVER(ORDER BY COUNT(1) DESC) AS rnk,
+COUNT(1) OVER() AS n_of_records
+FROM work w
+WHERE w.style IS NOT NULL
+GROUP BY w.style)
+SELECT style,
+CASE
+WHEN rnk <=3 then 'Most Popular'
+ELSE 'Least Popular'
+END as remarks
+FROM cte
+WHERE rnk <=3 or rnk > n_of_records -3
